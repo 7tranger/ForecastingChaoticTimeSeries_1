@@ -2,7 +2,10 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import BaggingRegressor
 
+# Генерация хаотического временного ряда (логистическое отображение)
 def generate_chaotic_series(length=1000):
     # Параметры системы Лоренца
     sigma = 10
@@ -14,6 +17,7 @@ def generate_chaotic_series(length=1000):
     # Начальные условия
     x, y, z = 1.0, 0.0, 0.0
 
+    # Массивы для хранения данных
     X_lorenz, Y_lorenz, Z_lorenz = [], [], []
 
     for _ in range(steps):
@@ -44,7 +48,7 @@ def generate_subsequences(series, mn, mx):
                                              series[i+el1+el2+el3], series[i+el1+el2+el3+el4]])
     return subsequences
 
-def find_motives(current_pattern, subsequences, max_dif=1000000, top_k=3):
+def find_motives(current_pattern, subsequences, max_dif=80, top_k=3):
     distances = []
     for m in subsequences:
         sm = 0
@@ -78,14 +82,33 @@ def find_all_forecast_values(series, subsequences, mn, mx):
     return forecast_values
 
 
-def predict_next(forecast_values, epsilon = 0.01, min_samples = 5):
+def predict_next(forecast_values, epsilon = 0.448, min_samples = 5):
     if len(forecast_values) == 0:
         return None
     forecast_values = np.array(forecast_values).reshape(-1, 1)
     clustering = DBSCAN(eps=epsilon, min_samples=min_samples).fit(forecast_values)
     labels = clustering.labels_
     unique_labels, counts = np.unique(labels[labels != -1], return_counts=True)
-    return np.mean(forecast_values)
+    if len(counts) == 0:
+        return None  # Все точки — шум
+
+        # Сортировка кластеров по убыванию размера
+    sorted_indices = np.argsort(counts)[::-1]
+    counts_sorted = counts[sorted_indices]
+    labels_sorted = unique_labels[sorted_indices]
+
+    # Проверка условия: самый большой кластер как минимум в 3 раза больше второго
+    if len(counts_sorted) > 1 and counts_sorted[0] >= 3 * counts_sorted[1]:
+        largest_label = labels_sorted[0]
+        largest_cluster_values = forecast_values[labels == largest_label]
+        return np.mean(largest_cluster_values)
+    elif len(counts_sorted) == 1:
+        # Если только один кластер, возвращаем его среднее
+        largest_label = labels_sorted[0]
+        largest_cluster_values = forecast_values[labels == largest_label]
+        return np.mean(largest_cluster_values)
+    else:
+        return None
 
 
 print("Enter row length:")
@@ -101,10 +124,33 @@ a = generate_chaotic_series(n - cnt)
 b = generate_chaotic_series(n)
 v = generate_subsequences(a, mn, mx)
 
+# Обучение ансамбля лин рег
+n_points = n-cnt
+x_series = np.array(generate_chaotic_series(n_points))
+
+window_size = 5
+X = []
+y = []
+
+for i in range(n_points - window_size):
+    X.append(x_series[i:i + window_size])
+    y.append(x_series[i + window_size])
+
+X = np.array(X)
+y = np.array(y)
+
+base_model = LinearRegression()
+ensemble_model = BaggingRegressor(base_model, n_estimators=100, random_state=42)
+ensemble_model.fit(X, y)
+last_window = x_series[-window_size:].tolist()
+
 for _ in range(cnt):
     forecast_values = find_all_forecast_values(a, v, mn, mx)
     el = predict_next(forecast_values)
+    if el is None:
+        el = ensemble_model.predict([last_window])[0]
     a.append(el)
+    last_window = last_window[1:] + [el]
 
 mae_arr = []
 mse_arr = []
@@ -126,8 +172,6 @@ for i in range(n-cnt, n):
     mseNow /= (i + 1 - (n - cnt) + 1)
     mae_arr.append(maeNow)
     mse_arr.append(mseNow)
-
-
 plt.figure(figsize=(10, 6))  # Размер графика
 
 # Рисуем все три линии

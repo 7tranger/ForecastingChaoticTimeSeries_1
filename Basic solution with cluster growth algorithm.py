@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
+# Генерация хаотического временного ряда (логистическое отображение)
 def generate_chaotic_series(length=1000):
     # Параметры системы Лоренца
     sigma = 10
@@ -14,6 +15,7 @@ def generate_chaotic_series(length=1000):
     # Начальные условия
     x, y, z = 1.0, 0.0, 0.0
 
+    # Массивы для хранения данных
     X_lorenz, Y_lorenz, Z_lorenz = [], [], []
 
     for _ in range(steps):
@@ -80,12 +82,12 @@ def find_all_forecast_values(series, subsequences, mn, mx):
 
 def predict_next(forecast_values, epsilon = 0.01, min_samples = 5):
     if len(forecast_values) == 0:
-        return None
+        return None, 0
     forecast_values = np.array(forecast_values).reshape(-1, 1)
     clustering = DBSCAN(eps=epsilon, min_samples=min_samples).fit(forecast_values)
     labels = clustering.labels_
     unique_labels, counts = np.unique(labels[labels != -1], return_counts=True)
-    return np.mean(forecast_values)
+    return np.mean(forecast_values), len(counts)
 
 
 print("Enter row length:")
@@ -101,9 +103,14 @@ a = generate_chaotic_series(n - cnt)
 b = generate_chaotic_series(n)
 v = generate_subsequences(a, mn, mx)
 
+last = []
 for _ in range(cnt):
     forecast_values = find_all_forecast_values(a, v, mn, mx)
-    el = predict_next(forecast_values)
+    el, cnt2 = predict_next(forecast_values)
+    if len(last) > 1 and cnt2 > last[-1] > last[-2]:
+        last.append(cnt2)
+        a.append(None)
+    last.append(cnt2)
     a.append(el)
 
 mae_arr = []
@@ -126,8 +133,6 @@ for i in range(n-cnt, n):
     mseNow /= (i + 1 - (n - cnt) + 1)
     mae_arr.append(maeNow)
     mse_arr.append(mseNow)
-
-
 plt.figure(figsize=(10, 6))  # Размер графика
 
 # Рисуем все три линии

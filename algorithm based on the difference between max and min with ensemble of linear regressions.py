@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
+# Генерация хаотического временного ряда (логистическое отображение)
 def generate_chaotic_series(length=1000):
     # Параметры системы Лоренца
     sigma = 10
@@ -14,6 +15,7 @@ def generate_chaotic_series(length=1000):
     # Начальные условия
     x, y, z = 1.0, 0.0, 0.0
 
+    # Массивы для хранения данных
     X_lorenz, Y_lorenz, Z_lorenz = [], [], []
 
     for _ in range(steps):
@@ -78,8 +80,10 @@ def find_all_forecast_values(series, subsequences, mn, mx):
     return forecast_values
 
 
-def predict_next(forecast_values, epsilon = 0.01, min_samples = 5):
+def predict_next(forecast_values, delt, epsilon = 0.01, min_samples = 5):
     if len(forecast_values) == 0:
+        return None
+    if (max(forecast_values) - min(forecast_values) > delt):
         return None
     forecast_values = np.array(forecast_values).reshape(-1, 1)
     clustering = DBSCAN(eps=epsilon, min_samples=min_samples).fit(forecast_values)
@@ -97,13 +101,19 @@ mx = int(input())
 print("How many points need to be predicted:")
 cnt = int(input())
 
-a = generate_chaotic_series(n - cnt)
+a = generate_chaotic_series(n - cnt-50)
 b = generate_chaotic_series(n)
 v = generate_subsequences(a, mn, mx)
-
+sm = 0
+for i in range(n - cnt - 50, n - cnt):
+    forecast_values = find_all_forecast_values(a, v, mn, mx)
+    if len(forecast_values) != 0:
+        sm += (max(forecast_values) - min(forecast_values))
+    a.append(b[i])
+sm /= 50
 for _ in range(cnt):
     forecast_values = find_all_forecast_values(a, v, mn, mx)
-    el = predict_next(forecast_values)
+    el = predict_next(forecast_values, sm)
     a.append(el)
 
 mae_arr = []
@@ -116,17 +126,16 @@ for i in range(n-cnt, n):
     mseNow = 0
     unpredictable = 0
     for j in range(n - cnt, i + 1):
-        if a[j] is None:
+        if a[i] is None:
             unpredictable += 1
             continue
-        maeNow += abs(a[j] - b[j])
-        mseNow += (a[j] - b[j]) ** 2
+        maeNow += abs(a[i] - b[i])
+        mseNow += (a[i] - b[i]) ** 2
     u_arr.append(unpredictable)
     maeNow /= (i + 1 - (n - cnt) + 1)
     mseNow /= (i + 1 - (n - cnt) + 1)
     mae_arr.append(maeNow)
     mse_arr.append(mseNow)
-
 
 plt.figure(figsize=(10, 6))  # Размер графика
 

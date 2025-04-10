@@ -2,7 +2,12 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import BaggingRegressor
+from sklearn.neural_network import MLPRegressor
+from sklearn.ensemble import RandomForestRegressor
 
+# Генерация хаотического временного ряда (логистическое отображение)
 def generate_chaotic_series(length=1000):
     # Параметры системы Лоренца
     sigma = 10
@@ -14,6 +19,7 @@ def generate_chaotic_series(length=1000):
     # Начальные условия
     x, y, z = 1.0, 0.0, 0.0
 
+    # Массивы для хранения данных
     X_lorenz, Y_lorenz, Z_lorenz = [], [], []
 
     for _ in range(steps):
@@ -78,8 +84,10 @@ def find_all_forecast_values(series, subsequences, mn, mx):
     return forecast_values
 
 
-def predict_next(forecast_values, epsilon = 0.01, min_samples = 5):
+def predict_next(forecast_values, delt, epsilon = 0.01, min_samples = 5):
     if len(forecast_values) == 0:
+        return None
+    if (max(forecast_values) - min(forecast_values) > delt):
         return None
     forecast_values = np.array(forecast_values).reshape(-1, 1)
     clustering = DBSCAN(eps=epsilon, min_samples=min_samples).fit(forecast_values)
@@ -97,14 +105,44 @@ mx = int(input())
 print("How many points need to be predicted:")
 cnt = int(input())
 
-a = generate_chaotic_series(n - cnt)
+a = generate_chaotic_series(n - cnt-50)
 b = generate_chaotic_series(n)
 v = generate_subsequences(a, mn, mx)
+sm = 0
+for i in range(n - cnt - 50, n - cnt):
+    forecast_values = find_all_forecast_values(a, v, mn, mx)
+    if len(forecast_values) != 0:
+        sm += (max(forecast_values) - min(forecast_values))
+    a.append(b[i])
+sm /= 50
+
+#обучение
+n_points = n - cnt
+x_series = np.array(generate_chaotic_series(n_points))
+
+window_size = 5
+X = []
+y = []
+
+for i in range(n_points - window_size):
+    X.append(x_series[i:i + window_size])
+    y.append(x_series[i + window_size])
+
+X = np.array(X)
+y = np.array(y)
+
+base_mlp = MLPRegressor(hidden_layer_sizes=(4, 10, 10, 4), max_iter=1000, random_state=42)
+ensemble_mlp = BaggingRegressor(base_mlp, n_estimators=10, random_state=42)
+ensemble_mlp.fit(X, y)
+last_window = x_series[-window_size:].tolist()
 
 for _ in range(cnt):
     forecast_values = find_all_forecast_values(a, v, mn, mx)
-    el = predict_next(forecast_values)
+    el = predict_next(forecast_values, sm)
+    if el is None:
+        el = ensemble_mlp.predict([last_window])[0]
     a.append(el)
+    last_window = last_window[1:] + [el]
 
 mae_arr = []
 mse_arr = []
@@ -126,7 +164,6 @@ for i in range(n-cnt, n):
     mseNow /= (i + 1 - (n - cnt) + 1)
     mae_arr.append(maeNow)
     mse_arr.append(mseNow)
-
 
 plt.figure(figsize=(10, 6))  # Размер графика
 
